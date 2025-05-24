@@ -42,7 +42,7 @@ The server itself is a very basic set of authenticated API around a secured data
 
 #### API
 
-- `INSERT (passwordHash, encryptedDEK)`
+- `INSERT ({passwordHash, encryptedDEK})`
     - `passwordHash` is the unique primary key and identifier, as well as the authentication
 - `DELETE (passwordHash)`
     - securely deletes `encryptedDEK` record
@@ -96,25 +96,25 @@ The drand network ensures that the packet cannot be decrypted before the expirat
 
 1. The decryption key for the packet will be generated and distributed by drand
 2. Using that decryption key, a watcher of your dead man's switch can decrypt the publicly-available packet and retrieve the password as well as the onion route to the Deadman's Gazette hosting your data
-3. That person can then retrieve the encrypted payload key from the server, and decrypt it using the password-generated KEK
+3. That person can then retrieve the encrypted DEK from the server, and decrypt it using the password-generated KEK
 4. Finally, they can use the resulting DEK to decrypt the original, publicly-available payload
 5. And that's it! The switch has achieved the desired result
 
 ### How to Deactivate/Reset the Switch
 
-This system uses a breakable chain of decryptions to provide cancellation, which is otherwise not an inherent feature of drand time-locking. In order to prevent decryption at the end of the time-lock, the password must be rendered useless by securely deleting the encrypted DEK record from the server by passwordHash (**NOTE: this requires trust, see below***)
+This system uses a breakable chain of multi-key decryptions to provide cancellation, which is otherwise not an inherent feature of drand time-locking. In order to prevent decryption at the end of the time-lock, the password must be rendered useless by securely deleting the encrypted DEK record from the Deadman's Gazette server (**NOTE: this requires trust, see below***)
 
-Once the record is deleted, the time-locked password is useless, and the encrypted DEK no longer exists to be decrypted. The dead man's switch has been effectively disabled.
+Once the record is deleted, the time-locked password is rendered useless, and the encrypted DEK no longer exists to be decrypted. The dead man's switch has been effectively disabled.
 
-To delay/reset the switch, simply repeat part of the process above before deletion:
+To instead delay/reset the switch, simply repeat part of the process above before deletion:
 
-1. GET the encrypted DEK by passwordHash from the server
-    - Deletion of the original `(passwordHash, encryptedDEK)` record can happen any time after Step 1
+1. GET the encrypted DEK from the server
+    - Deletion of the original `{passwordHash, encryptedDEK}` record can happen any time after Step 1
 2. Decrypt the DEK using the password-generated KEK
-3. Generate a new random password and re-encrypt the DEK
-4. Upload the new `(passwordHash, encryptedDEK)` to the server
+3. Generate a new random password and re-encrypt the DEK with the new password-generated KEK
+4. Upload the new `{passwordHash, encryptedDEK}` to the server
 5. Time-lock encrypt the new `{password, serverRoute}` packet using drand with the new expiry
-6. Publish the new packet and round number and publicly associate them with the original payload.
+6. Publish the new packet and round number and publicly associate them with the originally-uploaded encrypted payload.
 
 ### Security Model
 
@@ -134,22 +134,24 @@ The breakable chain of decryptions can be visualized:
 [drandTimelock] -> [password] -> [KEK] -> [DEK] -> [PAYLOAD]
 ```
 
-The payload maintains it's original encryption using the DEK at all times, and decrypting the KEK using the drand time-locked password cannot be prevented once set in motion. The indirection of using a secondary encryption to secure the DEK allows the time-lock to be reset or canceled at the will of the originator, simply by breaking the chain of decryptions (by deleting the KEK-encrypted DEK) that ends with the DEK that can decrypt the payload.
+The payload maintains it's original encryption using the DEK at all times, and decrypting the KEK using the drand time-locked password cannot be prevented once set in motion. The indirection of using a secondary encryption to secure the DEK allows the time-lock to be reset or canceled at the will of the originator, simply by breaking the chain of decryptions (e.g. deleting the KEK-encrypted DEK) before the time-lock releases.
 
-#### *Where is Trust Necessary
+#### *Trust
 
-The Deadman's Gazette server is the ONLY link of trust in this chain -- and it's important to understand what is being trusted, how it fits into this system, and how you can minimize or eliminate this trust entirely. 
+It's important to understand what is being trusted, how it fits into this system, and how you can minimize or eliminate this trust as much as possible. 
 
 The Gazette server uses SQLCipher as a database - this prevents any unauthorized person from reading data even if the DB files leaked, but it ALSO provides secure deletion to prevent even authorized persons (e.g. the Gazette hosts) from reading data once it has been deleted (see the [docs](https://discuss.zetetic.net/t/forensic-recovery-of-deleted-data/20)). 
 
-This is important, because if a cancelled KEK is persisted without your knowledge, the payload CAN STILL be decrypted once the drand network publishes the decryption key for that KEK's password after expiry. The Deadman's Gazette server accepts a *salted hash* of the password as identity/auth, NOT the original password itself, meaning that the server is no more capable of decrypting the payload key than anyone else, until the time-lock decryption key is published by drand. Securely deleting the stored data BEFORE this happens ensures the chain of decryptions is broken irrevokably, and the payload cannot be decrypted, *even by the server that originally stored the data*. 
+This is important, because if a cancelled KEK-encrypted DEK is persisted without your knowledge, the payload CAN STILL be decrypted once the drand network publishes the decryption key for that KEK's password after expiry. The Deadman's Gazette server accepts a *salted hash* of the password as identity/auth, NOT the original password itself, meaning that the server itself does not know the password, and is no more capable of decrypting the DEK than anyone else until the time-lock decryption key is published by drand. Securely deleting the stored data BEFORE this happens ensures the chain of decryptions is broken irrevokably, and the payload cannot be decrypted, *even by the server that originally stored the data*. 
 
-This server is provided open-source, in order to eliminate this trust boundary. You can be assured that the server deletes (and does not mirror/persist) the data as claimed simply by auditing the code to your satisfaction (or, of course, by trusting the security experts who do such things).
+This server is provided open-source, in order to eliminate this trust boundary. You can be assured that the server deletes (and does not mirror/persist) the data as claimed simply by auditing the code to your satisfaction (or, of course, by trusting the security experts who do such things) and then deploying it yourself.
 
-HOWEVER, USE OF THIS AS A HOSTED SERVICE COMES WITH AN IMPLICIT TRUST THAT THE DEPLOYED SERVER IS RUNNING THE AUDITED CODE, AND THUS THAT DATA IS BEING DELETED (AND NOT BEING MIRRORED/PERSISTED OTHERWISE) IN THE WAY IT CLAIMS TO BE. This cannot be guaranteed using any hosted service, though presumably many would be trustworthy. **For this reason, if you have any concerns about the trustworthiness of a hosted service, or are handling payloads too sensitive to tolerate any level of risk, it is best to verify and deploy your own service.**
+HOWEVER, USE OF THIS AS A HOSTED SERVICE COMES WITH AN IMPLICIT TRUST THAT THE DEPLOYED SERVER IS RUNNING THE AUDITED CODE, AND THUS THAT DATA IS BEING DELETED (AND NOT BEING MIRRORED/PERSISTED) IN THE WAY IT CLAIMS TO BE. This cannot be guaranteed using any hosted service, though presumably many would be trustworthy. **For this reason, if you have any concerns about the trustworthiness of a hosted service, or are handling payloads too sensitive to tolerate any level of risk, it is best to verify and deploy your own service.**
 
-The drand network is resilient against a certain number of malicious nodes (see the [docs](https://docs.drand.love/docs/security-model/)), which should keep the time-lock duration intact and prevent early decryption by curious, unauthorized parties. 
+#### Other Considerations
 
-Publication of the payload and the packet should be done in such a way as to be resilient against coordinated effort to remove the data, ensuring it exists to be decrypted if/when desired. For small data payloads, distributed ledgers (blockchains) may be an effective mechanism for this.
+The drand network is resilient against a certain number of malicious nodes (see the [docs](https://docs.drand.love/docs/security-model/)), which should keep the time-lock duration intact and prevent early decryption by curious, unauthorized parties. This is especially true for shorter time-lock windows.
 
-Using onion services for the server provides effective security and anonymization, as well as a natural obfuscation of the server itself, thus precluding most likely attacks. A denial of service attack (e.g. using TorsHammer) could temporarily disable the server and thus prevent any action, but since the most likely goal of an adversary would be to prevent release of the payload, this attack would actually work against that interest. By denying the originator access to cancellation, a DoS attack (unless it is maintained and unmitigated indefinitely) serves only to prevent cancellation of the payload's release. Once the server becomes available again, the decryption chain will remain intact. 
+Publication of the payload and the packet should be done in such a way as to be resilient against coordinated effort to remove the data, ensuring it exists to be decrypted if/when desired. For small data payloads, distributed ledgers (blockchains) may be an effective storage.
+
+Using onion services for the server provides effective security and anonymization, as well as a natural obfuscation of the server itself, thus precluding most likely attacks. A denial of service attack (e.g. using TorsHammer) could temporarily disable the server and thus prevent any action, but since the most likely goal of an adversary would be to prevent release of the payload, this attack would actually work against that interest. By denying the originator access to cancellation, a DoS attack (unless it is maintained indefinitely without mitigation/defense) serves only to prevent cancellation of the payload's release. Once the server becomes available again, the decryption chain will remain intact. 
