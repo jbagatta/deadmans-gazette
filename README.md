@@ -34,6 +34,8 @@ This is where the breakable chain comes into play. Instead of mailing your frien
 
 The system proposed here is an implementation of the safe from that analogy, along with scriptable instructions on how to set up, cancel, and defer a dead man's switch using the server. The server uses multi-key encryption and secure deletion to ensure that the originator of the dead man's switch retains complete control over if/when to release the payload, and to prevent anyone (even the host of the server itself) from accessing the payload without authorization.
 
+Multi-key encryption is standard practice for encryption-at-rest data storage, e.g. to allow a user to change their password without affecting the originally-encrypted data. A password change is effectively all that the proposed dead man's switch design entails, but with the additional complexity of the password being time-locked for public release. This requires care to ensure that the KEK-encrypted DEK is securely scrubbed if the switch is canceled or delayed, while maintaining resilient access to it if the switch instead remains active at expiry.
+
 ## Whitepaper
 
 ### Deadman's Gazette Server
