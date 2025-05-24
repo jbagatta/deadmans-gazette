@@ -16,15 +16,21 @@ As of the time of this writing (Spring 2025), that node network is currently con
 
 Cancellability is achieved by establishing a breakable chain of decryptions, such that access to the final payload is granted only by access to an intermediary, whose access in turn is ultimately provisioned by the drand time-lock. We can effectively cancel a dead man's switch established in this way by scrubbing the decryption data from the intermediary before its credentials are decryptable by the time-lock release. If no action is taken by the originator, however, the time-lock will grant access to the intermediary, which then grants access to the final payload.
 
+To provide an analogy, imagine you've locked an important document in a bank lockbox, and mailed your friend the key. Your friend will be able to open the box and view the document as soon as they receive the key. You can only stop this process by removing the document before the key arrives.
+
+Now assume that, for whatever reason, you can never remove the document from the lockbox (or, as the case may be, that exact copies of the locked document have been made). How can you prevent your friend from retrieving the document once they have the key?
+
+This is where the breakable chain comes into play. Instead of mailing your friend the key, you lock the key in a combination safe (that you DO maintain access to), and you mail your friend the combination. Nothing can stop them from opening that safe, but if you so choose, you can open it yourself beforehand and simply remove they key. Access to the safe no longer matters, because it no longer provides access to the document.
+
 #### Deadman's Gazette
 
-The system proposed here is an implementation of that intermediary, along with automatable instructions on how to set up, cancel, and defer a dead man's switch.
+The system proposed here is an implementation of the safe from that analogy, along with automatable instructions on how to set up, cancel, and defer a dead man's switch using the server.
 
 ## Whitepaper
 
 ### Deadman's Gazette Server
 
-The server itself is a very basic set of API around a secured data store:
+The server itself is a very basic set of authenticated API around a secured data store:
 
 #### API
 
@@ -33,14 +39,14 @@ The server itself is a very basic set of API around a secured data store:
 - `DELETE (passwordHash)`
     - securely deletes `encryptedPayloadKey` record
 - `GET (passwordHash) ->encryptedPayloadKey`
-- Public HTTP: 
-    - Serves an authenticated static page webapp to perform the client create/invalidate/delay actions described below 
+- Public HTTPS: 
+    - Serves a static page webapp to perform the client create/invalidate/delay actions described below 
     - Could also provide distribution of the public payload/packet data, directly to a blockchain or drop site
 
 #### Data Store
-- Embedded SQLCipher
-    - provides encrypted data storage and secure deletion
-    - Open source, secure: [GitHub](https://github.com/sqlcipher/sqlcipher)
+- [SQLCipher](https://github.com/sqlcipher/sqlcipher)
+    - Provides encrypted data storage and secure deletion
+    - Embedded in the server itself
 
 #### Deployment
 - Containerized API+DB
@@ -48,16 +54,17 @@ The server itself is a very basic set of API around a secured data store:
     - [Hardened against DoS attacks](https://community.torproject.org/onion-services/advanced/dos/)
     - [Following Best Practices](https://riseup.net/en/security/network-security/tor/onionservices-best-practices)
 
-### Create Dead Man's Switch
+### Creating a Dead Man's Switch
 
-0. Choose a payload with which to create a dead man's switch. 
-    - At the end of the chosen time-lock expiration, and without action from you, this payload will be made public
+0. Choose a payload with which you want to create a dead man's switch. 
+    - 🚨 **At the end of the chosen time-lock expiration, and without action from you, this payload will be made public** 🚨
 1. Generate a strong encryption/decryption key pair for the payload 
     - Symmetric or asymmetric public/private keys
 2. Generate a random plaintext password
-    - THIS IS THE TOKEN THAT PROVIDES AUTHORIZATION FOR ALL FUTURE ACTIONS -- KEEP IT SECRET, KEEP IT SAFE
+    - THIS IS THE TOKEN THAT PROVIDES AUTHORIZATION FOR ALL FUTURE ACTIONS 
+    - KEEP IT SECRET, KEEP IT SAFE
 3. Use the password from Step 2 to encrypt the payload decryption key from Step 1 
-4. Deploay a Deadman's Gazette server (or use a trusted hosted service)
+4. Deploy a Deadman's Gazette server (or use a trusted hosted service)
     - It's important that this server remain active for the duration of the expiration time length. It is therefore recommended that it be deployed secretly, resiliently, and securely, or that a trustworth hosted service (i.e. one maintained by a reputable journalism outlet) is used.
 5. Upload the hash of the plaintext password from Step 2 and the encryptedPayloadKey from Step 3 to the Gazette server from Step 4
 6. Use the encryption key from Step 1 to encrypt the payload from Step 0
