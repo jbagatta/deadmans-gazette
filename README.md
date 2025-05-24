@@ -12,11 +12,11 @@ Time-lock encryption is provided by the tlock library, which makes use of the [d
 
 There is some *fascinating* math behind this, but the poorly-explained layman's tldr is this: 
 
-The network makes available a public key with which to encrypt data. This key, and its associated private key, are associated with a future "round number", which maps to a specific point in time. The network's randomness as of this round number, and thus the value of the associated private key, are both predictable in advance *without the private key being computable*. The network generates the private key (and prevents early release of it) using consensus, so as long as the majority of nodes in the network are trustworth, the time-lock is secure. As of the time of this writing (Spring 2025), that node network is considered trustable and non-malicious.
+The network makes available a public key with which to encrypt data. This key, and its associated private key, are associated with a future "round number", which maps to a specific point in time. The network's randomness output as of this round number, and thus the value of the associated private key, are both predictable in advance *without the private key being explicitly computable before the round*. The network generates the private key (and prevents early release of it) using consensus, so as long as the majority of nodes in the network are trustworthy, the time-lock is secure. As of the time of this writing (Spring 2025), that node network is considered trustable and non-malicious.
 
 #### Cancellability
 
-Cancellability is achieved by establishing a breakable chain of decryptions via a multi-key strategy, such that access to the final payload (using a Data Encryption Key, or DEK) is granted only by access to an intermediary Key Encryption Key (KEK), whose access in turn is ultimately provisioned by the drand time-lock. A dead man's switch established in this way is effectively canceled by scrubbing the KEK before its access is granted by the time-locked password being released. If no action is taken by the originator, however, the time-lock will publish the password, thus granting access to the KEK, which then grants access to the DEK and the payload.
+Cancellability is achieved by establishing a breakable chain of decryptions via a multi-key strategy, such that access to the final payload (using a Data Encryption Key, or DEK) is granted only by access to an intermediary Key Encryption Key (KEK), whose access in turn is ultimately provisioned by the drand time-lock. A dead man's switch established in this way can be securely canceled by deleting the KEK-encrypted DEK before its access is granted by the time-locked password being released. If no action is taken by the originator, however, the time-lock will publish the password, thus granting access to the password-generated KEK, which then grants access to the encrypted DEK and finally to the encrypted payload.
 
 To provide an analogy, imagine you've locked an important document in a lockbox at a bank, and mailed your friend the key with instructions to open it unless they hear otherwise from you. This is a traditional (non-software-based) dead man's switch. Your friend will be able to open the box and view the document as soon as they receive the key. You (or an adversary) can only stop this process by removing the document before the key arrives.
 
@@ -28,7 +28,7 @@ So, how can you simultaneously:
 1. Enable your friend to retrieve the document if you want them to, and
 2. Prevent your friend from retrieving the document if you don't want them to?
 
-This is where the breakable chain comes into play. Instead of mailing your friend the key, you lock the key in a combination safe (that ONLY YOU maintain access to), and you mail your friend the both combination and the location of the safe. Nothing can stop them from opening that safe once they receive the letter, but at any time before then, you can simply open the safe and remove the key if you so choose. Now you can distribute as many lockboxes as you want, so that nobody can suppress all of them, and you can also guarantee the arrival of the combination to your friend, BUT you (and ONLY you) whether or not your friend ultimately retrieves the document. Eventual access to the safe no longer matters, because it doesn't provide access to the payload document *unless you want it to*.
+This is where the breakable chain comes into play. Instead of mailing your friend the key, you lock the key in a combination safe (that ONLY YOU maintain access to), and you mail your friend both the combination and the location of the safe. Nothing can stop them from opening that safe once they receive the letter, but at any time before then, you can simply open the safe and remove the key if you so choose. Now you can distribute as many lockboxes as you want, so that nobody can suppress all of them, and you can also guarantee the arrival of the combination to your friend, but you (and ONLY you) decide whether or not your friend ultimately retrieves the document. Eventual access to the safe no longer matters, because it doesn't provide access to the payload document *unless you want it to*. And -- importantly -- a complete lack of action on your part to disable it will leave the switch active, meaning an adversary cannot simply detain you to prevent release.
 
 #### Deadman's Gazette
 
@@ -47,7 +47,7 @@ The server itself is a very basic set of authenticated API around a secured data
 - `DELETE (passwordHash)`
     - securely deletes `encryptedDEK` record
 - `GET (passwordHash) -> encryptedDEK`
-- Public HTTPS: 
+- Public HTTP: 
     - Serves a static page webapp to perform the client create/invalidate/delay actions described below 
     - Could also provide distribution of the public payload/packet data, directly to a blockchain or drop site
 - Need API to support salting as well, for both the password-generated KEK and the password hash
@@ -83,7 +83,8 @@ The server itself is a very basic set of authenticated API around a secured data
     - Hash using server-provided salting, different from that used to create the KEK
 6. Use the DEK from Step 1 to encrypt the payload from Step 0
     - This can never been decrypted without the DEK from Step 1, which itself can only be decrypted using the password that generated the KEK from Step 2
-    - **At this point, nobody but the originator has access to the password, which means that until steps 7 and 8 are completed below, the payload can never be decrypted except by the originator -- 🚨🚨 PROCEEDING WITH STEPS 7-8 BELOW WILL ACTIVATE THE DEAD MAN'S SWITCH 🚨🚨**
+    - **At this point, nobody but the originator has access to the password, which means that until steps 7 and 8 are completed below, the payload can never be decrypted except by the originator 
+    - 🚨🚨 PROCEEDING WITH STEPS 7-8 BELOW WILL ACTIVATE THE DEAD MAN'S SWITCH 🚨🚨**
 7. Time-lock encrypt the packet `{plaintextPassword(Step 2), serverOnionRoute(Step 4)}` using drand's tlock library
     - Map the desired time length to a drand round number and use that round's public key
 8. Publish the encrypted payload from Step 6 and the time-locked packet from Step 7, as well as the drand round number
