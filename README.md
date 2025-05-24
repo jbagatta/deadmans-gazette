@@ -1,14 +1,24 @@
 # Deadman's Gazette
 
-A cancellable time-lock encryption system, secure and resilient against coordinated attack, usable as a hardened dead man's switch. 
+A dead man's switch, implemented using cancellable time-lock encryption. 
+
+Designed for security to withstand coordinated attack from state-level actors.
 
 ## Overview
 
-Timelock encryption is provided by the [drand library](https://docs.drand.love/docs/timelock-encryption/), whose node network is maintained by The League of Entropy. As of the time of this writing (Spring 2025), that node network is currently considered trustable and non-malicious.
+#### Time-Lock Encryption
 
-Cancellability is achieved by a breakable chain of decryptions, such that access to the final payload is granted only by access to an intermediary, whose access in turn is ultimately provisioned by the drand time-lock. We can effectively cancel a dead man's switch established in this way by scrubbing the decryption data from the intermediary before its credentials are decryptable by the time-lock release. If no action is taken by the originator, however, the time-lock will grant access to the intermediary, which then grants access to the final payload.
+Time-lock encryption is provided by the [drand consensus network](https://docs.drand.love/docs/timelock-encryption/), a distributed randomness beacon maintained by [The League of Entropy](https://www.drand.love/loe). 
 
-The system proposed here is effectively a resilient implementation of that intermediary, as well as scriptable instructions on how to set up, cancel, and defer a dead man's switch.
+As of the time of this writing (Spring 2025), that node network is currently considered trustable and non-malicious.
+
+#### Cancellability
+
+Cancellability is achieved by establishing a breakable chain of decryptions, such that access to the final payload is granted only by access to an intermediary, whose access in turn is ultimately provisioned by the drand time-lock. We can effectively cancel a dead man's switch established in this way by scrubbing the decryption data from the intermediary before its credentials are decryptable by the time-lock release. If no action is taken by the originator, however, the time-lock will grant access to the intermediary, which then grants access to the final payload.
+
+#### Deadman's Gazette
+
+The system proposed here is an implementation of that intermediary, along with automatable instructions on how to set up, cancel, and defer a dead man's switch.
 
 ## Whitepaper
 
@@ -24,7 +34,7 @@ The server itself is a very basic set of API around a secured data store:
     - securely deletes `encryptedPayloadKey` record
 - `GET (passwordHash) ->encryptedPayloadKey`
 - Public HTTP: 
-    - Serves static page webapp to perform the client create/invalidate/delay actions described below
+    - Serves an authenticated static page webapp to perform the client create/invalidate/delay actions described below 
     - Could also provide distribution of the public payload/packet data, directly to a blockchain or drop site
 
 #### Data Store
@@ -85,6 +95,16 @@ To delay/reset the switch, simply repeat part of the process above before deleti
 4. Upload the new passwordHash / encryptedPayloadKey to the server
 5. Time-lock encrypt the packet using drand with the new expiry
 6. Publish the new packet and round number and publicly associate them with the original payload.
+
+### Security Model
+
+#### Drand Security Limitations
+
+From the [drand documentation](https://docs.drand.love/docs/timelock-encryption/#%EF%B8%8F-security-assumptions):
+
+> - **Malicious Nodes:** If a threshold number of malicious nodes join the network, they could generate all future random values and decrypt future timelock ciphertexts. Our quicknet network started with 18 organizations running 22 nodes, minimizing this risk.
+> - **Quantum Resistance:** Our cryptography does not use quantum-resistant algorithms. If you encrypt something for 1000 years and a viable quantum computer emerges, it could decrypt it. Currently, no widespread quantum-resistant schemes exist for threshold identity-based encryption (IBE) cryptography.
+> - **Network Shutdown:** If the League of Entropy shuts down, members would delete their keys. This means ciphertexts created after the network's cessation would be un-decryptable until quantum computers can break them.
 
 #### Chain of Decryptions
 
