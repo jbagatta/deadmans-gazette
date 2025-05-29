@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dead Man's Gazette</title>
+  <script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/lib/argon2-bundled.min.js"></script>
+  <style>
+    body { font-family: monospace; max-width: 800px; margin: 2em auto; padding: 0 1em; }
+    .container { display: grid; gap: 2em; }
+    .step { border: 1px solid #ccc; padding: 1em; }
+    .result { word-break: break-all; font-size: 0.9em; background: #f5f5f5; padding: 0.5em; }
+    button { padding: 0.5em 1em; }
+    textarea { width: 100%; height: 100px; font-family: monospace; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <h1>Dead Man's Gazette</h1>
+  <div class="container">
+    <div class="step">
+      <h3>Step 0: Choose Payload</h3>
+      <input type="file" id="fileInput">
+      <div id="fileInfo"></div>
+    </div>
+
+    <div class="step">
+      <h3>Step 1-5: Create Dead Man's Switch</h3>
+      <button onclick="createSwitch()" id="createBtn">Create New Dead Man's Switch</button>
+      <div id="switchResult" class="result"></div>
+    </div>
+
+    <div class="step">
+      <h3>Retrieve Dead Man's Switch</h3>
+      <input type="text" id="passwordInput" placeholder="Enter password">
+      <button onclick="retrieveSwitch()">Retrieve</button>
+      <div id="retrieveResult" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentPayload = null;
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      try {
+        currentPayload = await file.arrayBuffer();
+        document.getElementById('fileInfo').textContent = 
+          `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      } catch (err) {
+        document.getElementById('fileInfo').textContent = 
+          `Error: ${err.message}`;
+      }
+    });
+
+    function generateUUID() {
+      return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+      );
+    }
+
+    async function generateDEK() {
+      return await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    async function generateKEK(password, salt) {
+      const result = await argon2.hash({
+        pass: password,
+        salt: salt,
+        type: argon2.ArgonType.Argon2id,
+        time: 3,
+        mem: 65536,
+        hashLen: 32,
+        parallelism: 4
+      });
+      return result.hash;
+    }
+
+    async function encryptDEK(dek, kek) {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encryptedKey = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        await crypto.subtle.importKey(
+          "raw",
+          kek,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt"]
+        ),
+        await crypto.subtle.exportKey("raw", dek)
+      );
+      return {
+        encryptedKey: new Uint8Array(encryptedKey),
+        iv
+      };
+    }
+
+    async function hashPassword(password) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    async function createSwitch() {
+      if (!currentPayload) {
+        alert('Please select a file first');
+        return;
+      }
+
+      try {
+        // Step 1: Generate DEK
+        const dek = await generateDEK();
+        
+        // Step 2: Generate random password (UUID)
+        const password = generateUUID();
+        
+        // Step 3: Generate KEK using Argon2
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const kek = await generateKEK(password, salt);
+        
+        // Step 4: Encrypt DEK with KEK
+        const { encryptedKey, iv } = await encryptDEK(dek, kek);
+
+        // Step 5: Hash password and prepare for storage
+        const passwordHash = await hashPassword(password);
+        
+        // Store on server
+        const response = await fetch('/deadman/insert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            passwordHash,
+            encryptedDEK: btoa(String.fromCharCode(...encryptedKey)),
+            salt: btoa(String.fromCharCode(...salt)),
+            iv: btoa(String.fromCharCode(...iv))
+          })
+        });
+
+        if (!response.ok) throw new Error('Server error');
+        
+        document.getElementById('switchResult').innerHTML = 
+          `Switch created successfully!<br><br>` +
+          `Password: <strong>${password}</strong><br>` +
+          `(Save this password - it cannot be recovered!)`;
+        
+      } catch (err) {
+        document.getElementById('switchResult').innerHTML = 
+          `<span class="error">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function retrieveSwitch() {
+      const password = document.getElementById('passwordInput').value;
+      if (!password) {
+        alert('Please enter a password');
+        return;
+      }
+
+      try {
+        const passwordHash = await hashPassword(password);
+
+        const response = await fetch('/deadman/get', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passwordHash })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to retrieve switch');
+        }
+
+        const result = await response.json();
+
+        // Derive key from password using PBKDF2
+        const keyMaterial = await crypto.subtle.importKey(
+          'raw',
+          new TextEncoder().encode(password),
+          'PBKDF2',
+          false,
+          ['deriveKey']
+        );
+
+        const decryptionKey = await crypto.subtle.deriveKey(
+          {
+            name: 'PBKDF2',
+            salt: Uint8Array.from(atob(result.salt), c => c.charCodeAt(0)),
+            iterations: 100000,
+            hash: 'SHA-256'
+          },
+          keyMaterial,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['decrypt']
+        );
+
+        // Decrypt the DEK
+        const encryptedDEK = Uint8Array.from(atob(result.encryptedDEK), c => c.charCodeAt(0));
+        const iv = Uint8Array.from(atob(result.iv), c => c.charCodeAt(0));
+        
+        const decryptedDEK = await crypto.subtle.decrypt(
+          {
+            name: 'AES-GCM',
+            iv: iv
+          },
+          decryptionKey,
+          encryptedDEK
+        );
+
+        document.getElementById('retrieveResult').innerHTML = 
+          `Switch retrieved successfully!<br><br>` +
+          `Payload Decryption Key: ${decryptedDEK}`;
+      } catch (err) {
+        document.getElementById('retrieveResult').innerHTML = 
+          `<span class="error">Error: ${err.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html> 

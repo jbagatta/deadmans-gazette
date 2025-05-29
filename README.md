@@ -88,6 +88,8 @@ The server itself is a very basic set of authenticated API around a secured data
     - It's important that this server remain active for the duration of the expiration time length. It is therefore recommended that it be deployed secretly, resiliently, and securely, or that a trustworthy hosted service (i.e. one maintained by a reputable press organization) is used.
     - This should be deployed behind a Tor hidden service - make note of the server's onion route for *Step 8* below
 6. Upload the hash of the plaintext password from *Step 2*, the encrypted DEK from *Step 4*, and the salt used to the Gazette server from *Step 5*
+    - The password hash should not need salting, as long as it is big and random 
+        - Since our only persistent identifier is the passwordHash itself, the password needs to be resolvable to the correct hash without any input from the server.
 7. Use the DEK from *Step 1* to encrypt the payload from *Step 0*
     - This can never been decrypted without the DEK from *Step 1*, which itself can only be decrypted using the password that generated the KEK from *Step 2*
     - **At this point, nobody but the originator has access to the password, which means that until *Steps 8 and 9* below are completed, the payload can never be decrypted except by the originator**
@@ -104,7 +106,7 @@ The drand network ensures that the packet cannot be decrypted before the expirat
 
 1. The decryption key for the packet will be generated and distributed by drand
 2. Using that decryption key, a watcher of your dead man's switch can decrypt the publicly-available packet and retrieve the password as well as the onion route to the Deadman's Gazette hosting your data
-3. That person can then retrieve the encrypted DEK from the server, and decrypt it using the password-generated KEK
+3. That person can then retrieve the encrypted DEK from the server using the password hash, and decrypt it using the password-generated KEK
 4. Finally, they can use the resulting DEK to decrypt the original, publicly-available payload
 5. And that's it! The switch has achieved the desired result, and the payload is now publicly released
 
@@ -150,7 +152,7 @@ It's important to understand what is being trusted, how it fits into this system
 
 The Gazette server uses SQLCipher as a database - this prevents any unauthorized person from reading data even if the DB files leaked, but it ALSO provides secure deletion to prevent even authorized persons (e.g. the Gazette hosts) from reading data once it has been deleted (see the [docs](https://discuss.zetetic.net/t/forensic-recovery-of-deleted-data/20)). 
 
-This is important, because if a cancelled KEK-encrypted DEK is persisted without your knowledge, the payload CAN STILL be decrypted once the drand network publishes the decryption key for that KEK's password. The Deadman's Gazette server accepts a *salted hash* of the password as identity/auth, NOT the original password itself, meaning that the server itself does not know the password, and is no more capable of decrypting the DEK than anyone else until the time-lock decryption key is published by drand. Securely deleting the stored data BEFORE this happens ensures the chain of decryptions is broken irrevokably, and the payload cannot be decrypted, *even by the server that originally stored the data*. 
+This is important, because if a cancelled KEK-encrypted DEK is persisted without your knowledge, the payload CAN STILL be decrypted once the drand network publishes the decryption key for that KEK's password. The Deadman's Gazette server accepts a *hash* of the password as identity/auth, NOT the original password itself, meaning that the server itself does not know the password, and is no more capable of decrypting the DEK than anyone else until the time-lock decryption key is published by drand. Securely deleting the stored data BEFORE this happens ensures the chain of decryptions is broken irrevokably, and the payload cannot be decrypted, *even by the server that originally stored the data*. 
 
 This server is provided open-source, in order to eliminate this trust boundary. You can be assured that the server deletes (and does not mirror/persist) the data as claimed simply by auditing the code to your satisfaction (or, of course, by trusting the security experts who do such things) and then deploying it yourself.
 
