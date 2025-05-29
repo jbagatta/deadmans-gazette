@@ -2,7 +2,7 @@
 
 A secure and resilient software-implemented dead man's switch, using the drand network for time-lock encryption, and multi-key (zero-access) encryption schemes for cancelability. Designed to withstand coordinated attack from state-level actors.
 
-*NOTE: The code provided in this repository is a proof-of-concept ONLY. It has not been audited by security professionals, and while I've done my best, I am quite frankly **not** good enough at this to be the solely-responsible security engineer for a project like this. **PLEASE DO NOT USE THIS CODE AS-IS**.*
+*NOTE: The code provided in this repository is a proof-of-concept ONLY. It has not been audited by security professionals, and while I've done my best, I am quite frankly **not** good enough at this to be the solely-responsible security engineer for a project like this in my spare time. **PLEASE DO NOT USE THIS CODE AS-IS**.*
 
 ## Overview
 
