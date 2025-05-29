@@ -1,5 +1,5 @@
 import { Database } from '@journeyapps/sqlcipher';
-import { serverConfig } from '../config/server';
+import { serverConfig } from '../config';
 import { createHash, randomBytes } from 'crypto';
 
 // Add type declarations for @journeyapps/sqlcipher
@@ -51,17 +51,14 @@ export class DatabaseService {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         salt TEXT NOT NULL,
-        version INTEGER NOT NULL DEFAULT 1,
-        metadata TEXT
       );
 
       -- Index for faster lookups
-      CREATE INDEX IF NOT EXISTS idx_gazette_entries_created_at 
-      ON gazette_entries(created_at);
+      CREATE INDEX IF NOT EXISTS idx_gazette_entries_password_hash 
+      ON gazette_entries(password_hash);
 
-      -- Index for version-based queries
-      CREATE INDEX IF NOT EXISTS idx_gazette_entries_version 
-      ON gazette_entries(version);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_gazette_entries_password_hash 
+      ON gazette_entries(password_hash);
     `);
   }
 
@@ -86,10 +83,8 @@ export class DatabaseService {
         encrypted_dek, 
         created_at, 
         updated_at, 
-        salt,
-        version,
-        metadata
-      ) VALUES (?, ?, ?, ?, ?, 1, ?)
+        salt
+      ) VALUES (?, ?, ?, ?, ?)
     `).run(
       passwordHash, 
       encryptedDEK, 
@@ -103,25 +98,21 @@ export class DatabaseService {
   public getEntry(passwordHash: string): { 
     encryptedDEK: string; 
     salt: string;
-    version: number;
   } | null {
     const result = this.db.prepare(`
-      SELECT encrypted_dek, salt, version, metadata
+      SELECT encrypted_dek, salt
       FROM gazette_entries
       WHERE password_hash = ?
     `).get(passwordHash) as { 
       encrypted_dek: string; 
       salt: string;
-      version: number;
-      metadata: string | null;
     } | undefined;
 
     if (!result) return null;
 
     return {
       encryptedDEK: result.encrypted_dek,
-      salt: result.salt,
-      version: result.version
+      salt: result.salt
     };
   }
 
@@ -139,8 +130,7 @@ export class DatabaseService {
   public updateEntry(
     passwordHash: string, 
     encryptedDEK: string, 
-    salt: string,
-    metadata?: Record<string, unknown>
+    salt: string
   ): boolean {
     const now = Date.now();
     
@@ -149,15 +139,12 @@ export class DatabaseService {
       SET 
         encrypted_dek = ?, 
         updated_at = ?, 
-        salt = ?,
-        version = version + 1,
-        metadata = ?
+        salt = ?
       WHERE password_hash = ?
     `).run(
       encryptedDEK, 
       now, 
       salt,
-      metadata ? JSON.stringify(metadata) : null,
       passwordHash
     );
 
@@ -169,14 +156,12 @@ export class DatabaseService {
     passwordHash: string;
     createdAt: number;
     updatedAt: number;
-    version: number;
   }> {
     return this.db.prepare(`
       SELECT 
         password_hash as passwordHash,
         created_at as createdAt,
-        updated_at as updatedAt,
-        version
+        updated_at as updatedAt
       FROM gazette_entries
       ORDER BY created_at DESC
     `).all();

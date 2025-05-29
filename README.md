@@ -56,7 +56,7 @@ The server itself is a very basic set of authenticated API around a secured data
 - Public HTTP: 
     - Serves a static page webapp to perform the client create/invalidate/delay actions described below 
     - Could also provide distribution of the public payload/packet data, directly to a blockchain or trusted drop site
-- Need API to support salting as well, for both the password-generated KEK and the password hash
+- Need API to support salting as well
 
 #### Data Store
 - [SQLCipher](https://github.com/sqlcipher/sqlcipher)
@@ -82,13 +82,12 @@ The server itself is a very basic set of authenticated API around a secured data
     - **KEEP IT SECRET, KEEP IT SAFE**
 3. Use the password from *Step 2* to generate a strong encryption key for the DEK
     - This is the Key Encryption Key (KEK)
-    - Argon2 recommended, with server-provided salting
+    - Argon2 recommended, with salting
 4. Use the KEK from *Step 3* to encrypt the DEK from *Step 1*
 5. Deploy a Deadman's Gazette server (or use a **trusted** provider)
     - It's important that this server remain active for the duration of the expiration time length. It is therefore recommended that it be deployed secretly, resiliently, and securely, or that a trustworthy hosted service (i.e. one maintained by a reputable press organization) is used.
     - This should be deployed behind a Tor hidden service - make note of the server's onion route for *Step 8* below
-6. Upload the hash of the plaintext password from *Step 2* and the encrypted DEK from *Step 4* to the Gazette server from *Step 5*
-    - Hash using server-provided salting, different from that used to create the KEK
+6. Upload the hash of the plaintext password from *Step 2*, the encrypted DEK from *Step 4*, and the salt used to the Gazette server from *Step 5*
 7. Use the DEK from *Step 1* to encrypt the payload from *Step 0*
     - This can never been decrypted without the DEK from *Step 1*, which itself can only be decrypted using the password that generated the KEK from *Step 2*
     - **At this point, nobody but the originator has access to the password, which means that until *Steps 8 and 9* below are completed, the payload can never be decrypted except by the originator**

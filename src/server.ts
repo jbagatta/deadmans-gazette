@@ -1,6 +1,6 @@
 import express from 'express';
 import http from 'http';
-import { serverConfig } from './config/server';
+import { serverConfig } from './config';
 import { dbService } from './services/database';
 import { setupRoutes } from './routes';
 
